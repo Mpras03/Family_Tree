@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "family-tree",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-14",
+  "assets": {
+    "directory": "../client/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "family-tree-db",
+      // Placeholder — replaced with the real id from `wrangler d1 create family-tree-db`
+      // during the Cloudflare setup step. Local `wrangler dev` works fine with this as-is.
+      "database_id": "REPLACE_AFTER_WRANGLER_D1_CREATE",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "family-tree-photos"
+    }
+  ]
+}

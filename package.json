@@ -1,0 +1,16 @@
+{
+  "name": "family-tree",
+  "private": true,
+  "workspaces": [
+    "client",
+    "worker"
+  ],
+  "scripts": {
+    "dev:worker": "npm run dev --workspace worker",
+    "dev:client": "npm run dev --workspace client",
+    "build:client": "npm run build --workspace client",
+    "deploy": "npm run build:client && npm run deploy --workspace worker",
+    "db:generate": "npm run db:generate --workspace worker",
+    "db:migrate:local": "npm run db:migrate:local --workspace worker"
+  }
+}
