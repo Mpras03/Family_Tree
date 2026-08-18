@@ -5,6 +5,8 @@ import * as schema from './db/schema'
 import members from './routes/members'
 import relationships from './routes/relationships'
 import photos from './routes/photos'
+import auth from './routes/auth'
+import users from './routes/users'
 import type { Env } from './env'
 
 const app = new Hono<Env>()
@@ -22,6 +24,8 @@ app.onError((err, c) => {
   return c.json({ error: 'Internal Server Error' }, 500)
 })
 
+app.route('/api/auth', auth)
+app.route('/api/users', users)
 app.route('/api/members', members)
 app.route('/api/relationships', relationships)
 app.route('/api/photos', photos)

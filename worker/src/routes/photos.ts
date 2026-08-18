@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
+import { requireAuth, requireRole } from '../middleware/auth'
 import type { Env } from '../env'
 
 const app = new Hono<Env>()
 
-app.post('/', async (c) => {
+app.use('*', requireAuth)
+
+app.post('/', requireRole('admin'), async (c) => {
   const form = await c.req.formData()
   const file = form.get('file')
   if (!(file instanceof File)) {

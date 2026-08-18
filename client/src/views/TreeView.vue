@@ -50,12 +50,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
+  <div class="page">
     <h1>Family Tree</h1>
-    <p v-if="loading">Loading tree...</p>
-    <p v-else-if="errorMsg">{{ errorMsg }}</p>
-    <p v-else-if="!hasMembers">No members yet. Add some first.</p>
-    <div ref="container" id="FamilyChart" class="tree-container"></div>
+    <p v-if="loading" class="text-muted">Loading tree...</p>
+    <p v-else-if="errorMsg" class="error-text">{{ errorMsg }}</p>
+    <p v-else-if="!hasMembers" class="text-muted">No members yet. Add some first.</p>
+    <div ref="container" id="FamilyChart" class="tree-container card"></div>
   </div>
 </template>
 
@@ -63,5 +63,7 @@ onMounted(async () => {
 .tree-container {
   width: 100%;
   height: 80vh;
+  padding: 0;
+  overflow: hidden;
 }
 </style>

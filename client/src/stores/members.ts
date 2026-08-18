@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { request } from '@/lib/http'
 
 export interface Member {
   id: string
@@ -27,16 +28,6 @@ export interface Relationship {
   relatedMemberId: string
   type: 'parent' | 'spouse'
   createdAt: string
-}
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Request failed: ${res.status}`)
-  }
-  if (res.status === 204) return undefined as T
-  return res.json()
 }
 
 export const useMembersStore = defineStore('members', () => {

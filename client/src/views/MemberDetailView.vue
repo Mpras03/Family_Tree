@@ -2,9 +2,11 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMembersStore, type MemberDetail } from '@/stores/members'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const store = useMembersStore()
+const auth = useAuthStore()
 
 const id = computed(() => route.params.id as string)
 const member = ref<MemberDetail | null>(null)
@@ -43,17 +45,23 @@ async function addRelationship() {
 </script>
 
 <template>
-  <div v-if="member">
-    <h1>{{ member.fullName }}</h1>
-    <p v-if="member.nickname">"{{ member.nickname }}"</p>
-    <p>Gender: {{ member.gender }}</p>
-    <p v-if="member.birthDate">Born: {{ member.birthDate }}</p>
-    <p v-if="member.deathDate">Died: {{ member.deathDate }}</p>
-    <p v-if="member.bio">{{ member.bio }}</p>
+  <div v-if="member" class="page">
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1>{{ member.fullName }}</h1>
+          <p v-if="member.nickname" class="text-muted">"{{ member.nickname }}"</p>
+        </div>
+        <RouterLink v-if="auth.isAdmin" :to="`/members/${member.id}/edit`" class="btn btn-secondary">Edit</RouterLink>
+      </div>
 
-    <RouterLink :to="`/members/${member.id}/edit`">Edit</RouterLink>
+      <p>Gender: {{ member.gender }}</p>
+      <p v-if="member.birthDate">Born: {{ member.birthDate }}</p>
+      <p v-if="member.deathDate">Died: {{ member.deathDate }}</p>
+      <p v-if="member.bio">{{ member.bio }}</p>
+    </div>
 
-    <section>
+    <section class="card relations-card">
       <h2>Parents</h2>
       <ul>
         <li v-for="p in member.parents" :key="p">{{ nameOf(p) }}</li>
@@ -68,25 +76,55 @@ async function addRelationship() {
       </ul>
     </section>
 
-    <section>
+    <section v-if="auth.isAdmin" class="card">
       <h2>Add relationship</h2>
-      <select v-model="relType">
-        <option value="parent">Parent of...</option>
-        <option value="child">Child of...</option>
-        <option value="spouse">Spouse of...</option>
-      </select>
-      <select v-model="relatedId">
-        <option value="" disabled>Select member</option>
-        <option v-for="m in otherMembers" :key="m.id" :value="m.id">{{ m.fullName }}</option>
-      </select>
-      <button @click="addRelationship">Add</button>
-      <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
+      <div class="add-relationship">
+        <select v-model="relType" class="input">
+          <option value="parent">Parent of...</option>
+          <option value="child">Child of...</option>
+          <option value="spouse">Spouse of...</option>
+        </select>
+        <select v-model="relatedId" class="input">
+          <option value="" disabled>Select member</option>
+          <option v-for="m in otherMembers" :key="m.id" :value="m.id">{{ m.fullName }}</option>
+        </select>
+        <button class="btn btn-primary" @click="addRelationship">Add</button>
+      </div>
+      <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
     </section>
   </div>
 </template>
 
 <style scoped>
-.error {
-  color: #c0392b;
+.page > .card,
+.page > section {
+  margin-bottom: var(--space-4);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.relations-card h2 {
+  font-size: 1rem;
+  margin-top: var(--space-3);
+}
+
+.relations-card h2:first-child {
+  margin-top: 0;
+}
+
+.relations-card ul {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.add-relationship {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
 }
 </style>

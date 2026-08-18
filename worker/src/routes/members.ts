@@ -2,9 +2,12 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { eq, or } from 'drizzle-orm'
 import { members, relationships } from '../db/schema'
+import { requireAuth, requireRole } from '../middleware/auth'
 import type { Env } from '../env'
 
 const app = new Hono<Env>()
+
+app.use('*', requireAuth)
 
 app.get('/', async (c) => {
   const db = c.get('db')
@@ -12,7 +15,7 @@ app.get('/', async (c) => {
   return c.json(rows)
 })
 
-app.post('/', async (c) => {
+app.post('/', requireRole('admin'), async (c) => {
   const db = c.get('db')
   const body = await c.req.json()
   if (!body.fullName || !body.gender) {
@@ -60,7 +63,7 @@ app.get('/:id', async (c) => {
   return c.json({ ...member, parents, children, spouses })
 })
 
-app.put('/:id', async (c) => {
+app.put('/:id', requireRole('admin'), async (c) => {
   const db = c.get('db')
   const id = c.req.param('id')
   const body = await c.req.json()
@@ -87,7 +90,7 @@ app.put('/:id', async (c) => {
   return c.json(updated)
 })
 
-app.delete('/:id', async (c) => {
+app.delete('/:id', requireRole('admin'), async (c) => {
   const db = c.get('db')
   const id = c.req.param('id')
 

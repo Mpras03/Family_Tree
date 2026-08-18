@@ -70,66 +70,62 @@ async function submit() {
 </script>
 
 <template>
-  <div>
-    <h1>{{ isEdit ? 'Edit Member' : 'Add Member' }}</h1>
-    <form @submit.prevent="submit">
-      <label>
-        Full name
-        <input v-model="form.fullName" required />
-      </label>
-      <label>
-        Nickname
-        <input v-model="form.nickname" />
-      </label>
-      <label>
-        Phone number
-        <input v-model="form.phonenumber" />
-      </label>
-      <label>
-        Gender
-        <select v-model="form.gender">
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
-      </label>
-      <label>
-        Birth date
-        <input v-model="form.birthDate" type="date" />
-      </label>
-      <label>
-        Death date
-        <input v-model="form.deathDate" type="date" />
-      </label>
-      <label>
-        Bio
-        <textarea v-model="form.bio"></textarea>
-      </label>
-      <label>
-        Photo
-        <input type="file" accept="image/*" @change="onFileChange" />
-      </label>
+  <div class="page">
+    <div class="card form-card">
+      <h1>{{ isEdit ? 'Edit Member' : 'Add Member' }}</h1>
+      <form @submit.prevent="submit">
+        <label class="form-field">
+          Full name
+          <input v-model="form.fullName" class="input" required />
+        </label>
+        <label class="form-field">
+          Nickname
+          <input v-model="form.nickname" class="input" />
+        </label>
+        <label class="form-field">
+          Phone number
+          <input v-model="form.phonenumber" class="input" />
+        </label>
+        <label class="form-field">
+          Gender
+          <select v-model="form.gender" class="input">
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </label>
+        <label class="form-field">
+          Birth date
+          <input v-model="form.birthDate" type="date" class="input" />
+        </label>
+        <label class="form-field">
+          Death date
+          <input v-model="form.deathDate" type="date" class="input" />
+        </label>
+        <label class="form-field">
+          Bio
+          <textarea v-model="form.bio" class="input" rows="4"></textarea>
+        </label>
+        <label class="form-field">
+          Photo
+          <input type="file" accept="image/*" @change="onFileChange" />
+        </label>
 
-      <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
-      <button type="submit" :disabled="saving">{{ saving ? 'Saving...' : 'Save' }}</button>
-    </form>
+        <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
+        <button type="submit" class="btn btn-primary" :disabled="saving">
+          {{ saving ? 'Saving...' : 'Save' }}
+        </button>
+      </form>
+    </div>
   </div>
 </template>
 
 <style scoped>
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+.form-card {
   max-width: 28rem;
 }
 
-label {
+form {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-}
-
-.error {
-  color: #c0392b;
 }
 </style>

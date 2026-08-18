@@ -2,9 +2,12 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { eq } from 'drizzle-orm'
 import { members, relationships } from '../db/schema'
+import { requireAuth, requireRole } from '../middleware/auth'
 import type { Env } from '../env'
 
 const app = new Hono<Env>()
+
+app.use('*', requireAuth, requireRole('admin'))
 
 app.post('/', async (c) => {
   const db = c.get('db')
