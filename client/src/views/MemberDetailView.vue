@@ -27,6 +27,37 @@ function nameOf(memberId: string) {
 
 const otherMembers = computed(() => store.members.filter((m) => m.id !== id.value))
 
+type RelKind = 'parent' | 'child' | 'spouse'
+
+function relIdFor(kind: RelKind, otherId: string): string | undefined {
+  const rels = member.value?.relations ?? []
+  if (kind === 'parent') {
+    return rels.find((r) => r.type === 'parent' && r.memberId === otherId && r.relatedMemberId === id.value)?.id
+  }
+  if (kind === 'child') {
+    return rels.find((r) => r.type === 'parent' && r.memberId === id.value && r.relatedMemberId === otherId)?.id
+  }
+  return rels.find(
+    (r) =>
+      r.type === 'spouse' &&
+      ((r.memberId === id.value && r.relatedMemberId === otherId) ||
+        (r.memberId === otherId && r.relatedMemberId === id.value)),
+  )?.id
+}
+
+async function removeRelationship(kind: RelKind, otherId: string) {
+  const relId = relIdFor(kind, otherId)
+  if (!relId) return
+  if (!confirm(`Remove relationship with ${nameOf(otherId)}?`)) return
+  errorMsg.value = null
+  try {
+    await store.removeRelationship(relId)
+    await load()
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to remove relationship'
+  }
+}
+
 async function addRelationship() {
   if (!relatedId.value) return
   errorMsg.value = null
@@ -64,15 +95,45 @@ async function addRelationship() {
     <section class="card relations-card">
       <h2>Parents</h2>
       <ul>
-        <li v-for="p in member.parents" :key="p">{{ nameOf(p) }}</li>
+        <li v-for="p in member.parents" :key="p">
+          <span>{{ nameOf(p) }}</span>
+          <button
+            v-if="auth.isAdmin"
+            type="button"
+            class="btn btn-secondary btn-remove"
+            @click="removeRelationship('parent', p)"
+          >
+            Remove
+          </button>
+        </li>
       </ul>
       <h2>Children</h2>
       <ul>
-        <li v-for="c in member.children" :key="c">{{ nameOf(c) }}</li>
+        <li v-for="c in member.children" :key="c">
+          <span>{{ nameOf(c) }}</span>
+          <button
+            v-if="auth.isAdmin"
+            type="button"
+            class="btn btn-secondary btn-remove"
+            @click="removeRelationship('child', c)"
+          >
+            Remove
+          </button>
+        </li>
       </ul>
       <h2>Spouses</h2>
       <ul>
-        <li v-for="s in member.spouses" :key="s">{{ nameOf(s) }}</li>
+        <li v-for="s in member.spouses" :key="s">
+          <span>{{ nameOf(s) }}</span>
+          <button
+            v-if="auth.isAdmin"
+            type="button"
+            class="btn btn-secondary btn-remove"
+            @click="removeRelationship('spouse', s)"
+          >
+            Remove
+          </button>
+        </li>
       </ul>
     </section>
 
@@ -119,6 +180,21 @@ async function addRelationship() {
 .relations-card ul {
   margin: 0 0 var(--space-2);
   padding-left: var(--space-4);
+}
+
+.relations-card li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  max-width: 22rem;
+}
+
+.btn-remove {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .add-relationship {

@@ -20,6 +20,7 @@ export interface MemberDetail extends Member {
   parents: string[]
   children: string[]
   spouses: string[]
+  relations: Relationship[]
 }
 
 export interface Relationship {

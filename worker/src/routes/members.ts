@@ -60,7 +60,7 @@ app.get('/:id', async (c) => {
     .filter((r) => r.type === 'spouse')
     .map((r) => (r.memberId === id ? r.relatedMemberId : r.memberId))
 
-  return c.json({ ...member, parents, children, spouses })
+  return c.json({ ...member, parents, children, spouses, relations: rels })
 })
 
 app.put('/:id', requireRole('admin'), async (c) => {
