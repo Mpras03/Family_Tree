@@ -4,6 +4,7 @@ import * as f3 from 'family-chart'
 import 'family-chart/styles/family-chart.css'
 import { useMembersStore, type MemberDetail } from '@/stores/members'
 import MemberPickerModal from '@/components/MemberPickerModal.vue'
+import MemberInfoModal from '@/components/MemberInfoModal.vue'
 
 const store = useMembersStore()
 const container = ref<HTMLElement | null>(null)
@@ -33,6 +34,13 @@ let chart: ReturnType<typeof f3.createChart> | null = null
 let allData: Datum[] = []
 
 const pickerOpen = ref(false)
+// id of the member whose read-only detail popup is open (opened from the eye
+// button on the highlighted card)
+const infoMemberId = ref<string | null>(null)
+
+function openInfo(id: string) {
+  infoMemberId.value = id
+}
 
 const nameById = computed(() => {
   const map = new Map<string, string>()
@@ -240,9 +248,29 @@ onMounted(async () => {
     card.setOnCardClick((_e: MouseEvent, d: { data: { id: string } }) => handlePersonClick(d.data.id))
     card.setOnCardUpdate(function (this: HTMLElement, d: { data: { id: string } }) {
       const el = this.querySelector('.card') as HTMLElement | null
-      if (el) {
-        el.classList.toggle('is-root', d.data.id === activeRootId.value)
-        el.classList.toggle('has-folded', rootCollapsed.value && d.data.id === activeRootId.value)
+      if (!el) return
+      const isRoot = d.data.id === activeRootId.value
+      el.classList.toggle('is-root', isRoot)
+      el.classList.toggle('has-folded', rootCollapsed.value && isRoot)
+
+      // eye button on the highlighted card -> opens the read-only detail popup.
+      // click is stopped so it doesn't also trigger collapse/expand.
+      const existing = el.querySelector('.card-view-btn')
+      if (isRoot && !existing) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'card-view-btn'
+        btn.title = 'Lihat detail anggota'
+        btn.setAttribute('aria-label', 'Lihat detail anggota')
+        btn.innerHTML =
+          '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>'
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation()
+          openInfo(d.data.id)
+        })
+        el.appendChild(btn)
+      } else if (!isRoot && existing) {
+        existing.remove()
       }
     })
 
@@ -305,6 +333,12 @@ onMounted(async () => {
       :options="pickerOptions"
       @select="pickRoot"
       @close="pickerOpen = false"
+    />
+
+    <MemberInfoModal
+      v-if="infoMemberId"
+      :member-id="infoMemberId"
+      @close="infoMemberId = null"
     />
   </div>
 </template>
@@ -381,6 +415,21 @@ onMounted(async () => {
 .tree-container :deep(.card-image-circle) {
   --male-color: #6b7c93;
   --female-color: #b0868c;
+  position: relative;
+}
+
+/* family-chart offsets the <img> by img_x/img_y, which leaves a ring of the
+   card's gender background peeking out around an uploaded photo. Pin the image
+   to fill the whole circle instead. */
+.tree-container :deep(.card-image-circle img) {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 /* thick connector lines between family members */
@@ -404,6 +453,31 @@ onMounted(async () => {
 .tree-container :deep(.card.has-folded .card-label::after) {
   content: ' +';
   opacity: 0.85;
+}
+
+/* "view details" eye button, injected onto the highlighted card */
+.tree-container :deep(.card-view-btn) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(35%, -35%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #111827;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.tree-container :deep(.card-view-btn:hover) {
+  background: #374151;
 }
 
 /* drop the browser's focus rectangle on cards - the active root gets its own
