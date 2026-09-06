@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import * as f3 from 'family-chart'
 import 'family-chart/styles/family-chart.css'
 import { useMembersStore, type MemberDetail } from '@/stores/members'
+import MemberPickerModal from '@/components/MemberPickerModal.vue'
 
 const store = useMembersStore()
 const container = ref<HTMLElement | null>(null)
@@ -31,11 +32,35 @@ let chart: ReturnType<typeof f3.createChart> | null = null
 // --- relationship data (persistent, never mutated by expand/collapse) ---
 let allData: Datum[] = []
 
-const rootOptions = computed(() =>
+const pickerOpen = ref(false)
+
+const nameById = computed(() => {
+  const map = new Map<string, string>()
+  for (const m of store.members) map.set(m.id, m.fullName)
+  return map
+})
+
+const pickerOptions = computed(() =>
   [...store.members]
-    .map((m) => ({ id: m.id, label: m.nickname ? `${m.fullName} (${m.nickname})` : m.fullName }))
-    .sort((a, b) => a.label.localeCompare(b.label)),
+    .map((m) => ({
+      id: m.id,
+      fullName: m.fullName,
+      parents: (m.parents ?? []).map((p) => nameById.value.get(p) ?? p).join(', ') || '—',
+      gender: m.gender,
+    }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName)),
 )
+
+const activeRootLabel = computed(() => {
+  const m = store.members.find((x) => x.id === activeRootId.value)
+  if (!m) return 'Pilih anggota'
+  return m.nickname ? `${m.fullName} (${m.nickname})` : m.fullName
+})
+
+function pickRoot(id: string) {
+  pickerOpen.value = false
+  handlePersonClick(id)
+}
 
 function toChartDatum(m: MemberDetail): Datum {
   return {
@@ -253,16 +278,10 @@ onMounted(async () => {
     </div>
 
     <div v-if="hasMembers && !loading && !errorMsg" class="tree-controls">
-      <label class="root-picker">
-        Fokus ke
-        <select
-          class="input"
-          :value="activeRootId"
-          @change="handlePersonClick(($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="o in rootOptions" :key="o.id" :value="o.id">{{ o.label }}</option>
-        </select>
-      </label>
+      <span class="root-picker-label">Fokus ke</span>
+      <button type="button" class="input root-picker-trigger" @click="pickerOpen = true">
+        {{ activeRootLabel }}
+      </button>
     </div>
 
     <p class="text-muted hint">
@@ -280,6 +299,13 @@ onMounted(async () => {
       id="FamilyChart"
       class="f3 tree-container"
     ></div>
+
+    <MemberPickerModal
+      v-if="pickerOpen"
+      :options="pickerOptions"
+      @select="pickRoot"
+      @close="pickerOpen = false"
+    />
   </div>
 </template>
 
@@ -321,16 +347,15 @@ onMounted(async () => {
   margin-bottom: var(--space-3);
 }
 
-.root-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+.root-picker-label {
   font-size: 0.9rem;
   color: var(--color-text-muted);
 }
 
-.root-picker select {
-  min-width: 12rem;
+.root-picker-trigger {
+  min-width: 14rem;
+  text-align: left;
+  cursor: pointer;
 }
 
 .hint {
@@ -379,5 +404,48 @@ onMounted(async () => {
 .tree-container :deep(.card.has-folded .card-label::after) {
   content: ' +';
   opacity: 0.85;
+}
+
+/* drop the browser's focus rectangle on cards - the active root gets its own
+   marker below */
+.tree-container :deep(.card_cont:focus),
+.tree-container :deep(.card_cont:focus-visible),
+.tree-container :deep(.card:focus),
+.tree-container :deep(.card:focus-visible) {
+  outline: none;
+}
+
+/* active-root marker: black frame where the focus rectangle used to be, with a
+   black glow pulsing outward from it */
+.tree-container :deep(.card.is-root) {
+  outline: 3px solid #111827;
+  outline-offset: 5px;
+  border-radius: 10px;
+  animation: root-halo 1.8s ease-out infinite;
+}
+
+@keyframes root-halo {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(17, 24, 39, 0.55),
+      0 0 10px 2px rgba(17, 24, 39, 0.4);
+  }
+  70% {
+    box-shadow:
+      0 0 0 16px rgba(17, 24, 39, 0),
+      0 0 24px 7px rgba(17, 24, 39, 0.28);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(17, 24, 39, 0),
+      0 0 10px 2px rgba(17, 24, 39, 0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-container :deep(.card.is-root) {
+    animation: none;
+    box-shadow: 0 0 16px 4px rgba(17, 24, 39, 0.4);
+  }
 }
 </style>

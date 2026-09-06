@@ -2,10 +2,12 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { request } from '@/lib/http'
 
+export type Role = 'admin' | 'editor' | 'user'
+
 export interface AppUser {
   id: string
   username: string
-  role: 'admin' | 'user'
+  role: Role
   createdAt: string
   updatedAt: string
 }
@@ -27,7 +29,7 @@ export const useUsersStore = defineStore('users', () => {
     }
   }
 
-  async function createUser(payload: { username: string; password: string; role: 'admin' | 'user' }) {
+  async function createUser(payload: { username: string; password: string; role: Role }) {
     const created = await request<AppUser>('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -37,7 +39,7 @@ export const useUsersStore = defineStore('users', () => {
     return created
   }
 
-  async function updateUser(id: string, payload: { role?: 'admin' | 'user'; password?: string }) {
+  async function updateUser(id: string, payload: { role?: Role; password?: string }) {
     const updated = await request<AppUser>(`/api/users/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

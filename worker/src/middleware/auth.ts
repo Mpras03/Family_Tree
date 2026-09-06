@@ -4,7 +4,7 @@ import { createMiddleware } from 'hono/factory'
 import { eq } from 'drizzle-orm'
 import { sessions, users } from '../db/schema'
 import { SESSION_COOKIE_NAME } from '../lib/auth'
-import type { Env } from '../env'
+import type { Env, Role } from '../env'
 
 export const requireAuth = createMiddleware<Env>(async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE_NAME)
@@ -30,10 +30,10 @@ export const requireAuth = createMiddleware<Env>(async (c, next) => {
   await next()
 })
 
-export function requireRole(role: 'admin') {
+export function requireRole(...roles: Role[]) {
   return createMiddleware<Env>(async (c, next) => {
     const user = c.get('user')
-    if (!user || user.role !== role) throw new HTTPException(403, { message: 'Forbidden' })
+    if (!user || !roles.includes(user.role)) throw new HTTPException(403, { message: 'Forbidden' })
     await next()
   })
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useUsersStore } from '@/stores/users'
+import { useUsersStore, type Role } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
 
 const store = useUsersStore()
@@ -10,7 +10,7 @@ onMounted(() => store.fetchUsers())
 
 const newUsername = ref('')
 const newPassword = ref('')
-const newRole = ref<'admin' | 'user'>('user')
+const newRole = ref<Role>('user')
 const createError = ref<string | null>(null)
 const creating = ref(false)
 
@@ -33,7 +33,7 @@ async function createUser() {
   }
 }
 
-async function changeRole(id: string, role: 'admin' | 'user') {
+async function changeRole(id: string, role: Role) {
   rowError.value[id] = ''
   try {
     await store.updateUser(id, { role })
@@ -87,6 +87,7 @@ async function removeUser(id: string) {
           Role
           <select v-model="newRole" class="input">
             <option value="user">User</option>
+            <option value="editor">Editor</option>
             <option value="admin">Admin</option>
           </select>
         </label>
@@ -117,9 +118,10 @@ async function removeUser(id: string) {
               class="input"
               :value="u.role"
               :disabled="u.id === auth.user?.id"
-              @change="changeRole(u.id, ($event.target as HTMLSelectElement).value as 'admin' | 'user')"
+              @change="changeRole(u.id, ($event.target as HTMLSelectElement).value as Role)"
             >
               <option value="user">User</option>
+              <option value="editor">Editor</option>
               <option value="admin">Admin</option>
             </select>
           </td>

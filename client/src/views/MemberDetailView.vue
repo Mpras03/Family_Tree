@@ -10,9 +10,6 @@ const auth = useAuthStore()
 
 const id = computed(() => route.params.id as string)
 const member = ref<MemberDetail | null>(null)
-const relatedId = ref('')
-const relType = ref<'parent' | 'child' | 'spouse'>('parent')
-const errorMsg = ref<string | null>(null)
 
 async function load() {
   member.value = await store.fetchMember(id.value)
@@ -25,54 +22,10 @@ function nameOf(memberId: string) {
   return store.members.find((m) => m.id === memberId)?.fullName ?? memberId
 }
 
-const otherMembers = computed(() => store.members.filter((m) => m.id !== id.value))
-
-type RelKind = 'parent' | 'child' | 'spouse'
-
-function relIdFor(kind: RelKind, otherId: string): string | undefined {
-  const rels = member.value?.relations ?? []
-  if (kind === 'parent') {
-    return rels.find((r) => r.type === 'parent' && r.memberId === otherId && r.relatedMemberId === id.value)?.id
-  }
-  if (kind === 'child') {
-    return rels.find((r) => r.type === 'parent' && r.memberId === id.value && r.relatedMemberId === otherId)?.id
-  }
-  return rels.find(
-    (r) =>
-      r.type === 'spouse' &&
-      ((r.memberId === id.value && r.relatedMemberId === otherId) ||
-        (r.memberId === otherId && r.relatedMemberId === id.value)),
-  )?.id
-}
-
-async function removeRelationship(kind: RelKind, otherId: string) {
-  const relId = relIdFor(kind, otherId)
-  if (!relId) return
-  if (!confirm(`Remove relationship with ${nameOf(otherId)}?`)) return
-  errorMsg.value = null
-  try {
-    await store.removeRelationship(relId)
-    await load()
-  } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to remove relationship'
-  }
-}
-
-async function addRelationship() {
-  if (!relatedId.value) return
-  errorMsg.value = null
-  try {
-    if (relType.value === 'child') {
-      await store.addRelationship({ memberId: relatedId.value, relatedMemberId: id.value, type: 'parent' })
-    } else {
-      await store.addRelationship({ memberId: id.value, relatedMemberId: relatedId.value, type: relType.value })
-    }
-    relatedId.value = ''
-    await load()
-  } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to add relationship'
-  }
-}
+const genderLabel = computed(() => (member.value?.gender === 'female' ? 'Female' : 'Male'))
+const photoUrl = computed(() =>
+  member.value?.photoKey ? `/api/photos/${member.value.photoKey}` : null,
+)
 </script>
 
 <template>
@@ -83,76 +36,76 @@ async function addRelationship() {
           <h1>{{ member.fullName }}</h1>
           <p v-if="member.nickname" class="text-muted">"{{ member.nickname }}"</p>
         </div>
-        <RouterLink v-if="auth.isAdmin" :to="`/members/${member.id}/edit`" class="btn btn-secondary">Edit</RouterLink>
+        <RouterLink v-if="auth.canManageMembers" :to="`/members/${member.id}/edit`" class="btn btn-secondary">
+          Edit
+        </RouterLink>
       </div>
 
-      <p>Gender: {{ member.gender }}</p>
-      <p v-if="member.birthOrder">Anak ke-{{ member.birthOrder }}</p>
-      <p v-if="member.birthDate">Born: {{ member.birthDate }}</p>
-      <p v-if="member.deathDate">Died: {{ member.deathDate }}</p>
-      <p v-if="member.bio">{{ member.bio }}</p>
+      <div class="photo-wrap">
+        <img v-if="photoUrl" :src="photoUrl" :alt="member.fullName" class="photo" />
+        <div v-else class="photo photo-placeholder" aria-label="No photo">
+          <svg viewBox="0 0 24 24" width="56" height="56" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-5.33 0-8 2.67-8 6v2h16v-2c0-3.33-2.67-6-8-6z"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <dl class="info-grid">
+        <div>
+          <dt>Full name</dt>
+          <dd>{{ member.fullName }}</dd>
+        </div>
+        <div>
+          <dt>Nickname</dt>
+          <dd>{{ member.nickname || '—' }}</dd>
+        </div>
+        <div>
+          <dt>Phone number</dt>
+          <dd>{{ member.phonenumber || '—' }}</dd>
+        </div>
+        <div>
+          <dt>Gender</dt>
+          <dd>{{ genderLabel }}</dd>
+        </div>
+        <div>
+          <dt>Birth date</dt>
+          <dd>{{ member.birthDate || '—' }}</dd>
+        </div>
+        <div>
+          <dt>Death date</dt>
+          <dd>{{ member.deathDate || '—' }}</dd>
+        </div>
+        <div>
+          <dt>Anak ke- (urutan lahir)</dt>
+          <dd>{{ member.birthOrder ?? '—' }}</dd>
+        </div>
+      </dl>
+
+      <div class="bio-block">
+        <dt>Bio</dt>
+        <dd>{{ member.bio || '—' }}</dd>
+      </div>
     </div>
 
     <section class="card relations-card">
       <h2>Parents</h2>
       <ul>
-        <li v-for="p in member.parents" :key="p">
-          <span>{{ nameOf(p) }}</span>
-          <button
-            v-if="auth.isAdmin"
-            type="button"
-            class="btn btn-secondary btn-remove"
-            @click="removeRelationship('parent', p)"
-          >
-            Remove
-          </button>
-        </li>
+        <li v-for="p in member.parents" :key="p">{{ nameOf(p) }}</li>
+        <li v-if="member.parents.length === 0" class="text-muted">—</li>
       </ul>
       <h2>Children</h2>
       <ul>
-        <li v-for="c in member.children" :key="c">
-          <span>{{ nameOf(c) }}</span>
-          <button
-            v-if="auth.isAdmin"
-            type="button"
-            class="btn btn-secondary btn-remove"
-            @click="removeRelationship('child', c)"
-          >
-            Remove
-          </button>
-        </li>
+        <li v-for="c in member.children" :key="c">{{ nameOf(c) }}</li>
+        <li v-if="member.children.length === 0" class="text-muted">—</li>
       </ul>
       <h2>Spouses</h2>
       <ul>
-        <li v-for="s in member.spouses" :key="s">
-          <span>{{ nameOf(s) }}</span>
-          <button
-            v-if="auth.isAdmin"
-            type="button"
-            class="btn btn-secondary btn-remove"
-            @click="removeRelationship('spouse', s)"
-          >
-            Remove
-          </button>
-        </li>
+        <li v-for="s in member.spouses" :key="s">{{ nameOf(s) }}</li>
+        <li v-if="member.spouses.length === 0" class="text-muted">—</li>
       </ul>
-    </section>
-
-    <section v-if="auth.isAdmin" class="card">
-      <h2>Add relationship</h2>
-      <div class="add-relationship">
-        <select v-model="relType" class="input">
-          <option value="parent">Parent of...</option>
-          <option value="child">Child of...</option>
-          <option value="spouse">Spouse of...</option>
-        </select>
-        <select v-model="relatedId" class="input">
-          <option value="" disabled>Select member</option>
-          <option v-for="m in otherMembers" :key="m.id" :value="m.id">{{ m.fullName }}</option>
-        </select>
-        <button class="btn btn-primary" @click="addRelationship">Add</button>
-      </div>
-      <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
     </section>
   </div>
 </template>
@@ -167,6 +120,55 @@ async function addRelationship() {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.photo-wrap {
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.photo {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.info-grid dt,
+.bio-block dt {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
+}
+
+.info-grid dd,
+.bio-block dd {
+  margin: 0;
+}
+
+.bio-block {
+  margin-top: var(--space-4);
+}
+
+.bio-block dd {
+  white-space: pre-wrap;
 }
 
 .relations-card h2 {
@@ -184,24 +186,6 @@ async function addRelationship() {
 }
 
 .relations-card li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
   padding: var(--space-1) 0;
-  max-width: 22rem;
-}
-
-.btn-remove {
-  padding: var(--space-1) var(--space-2);
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.add-relationship {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  align-items: center;
 }
 </style>

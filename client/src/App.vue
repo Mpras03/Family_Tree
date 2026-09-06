@@ -15,7 +15,7 @@ async function logout() {
 <template>
   <nav v-if="!route.meta.public" class="app-nav">
     <div class="app-nav-links">
-      <RouterLink to="/members">Members</RouterLink>
+      <RouterLink v-if="auth.canManageMembers" to="/members">Members</RouterLink>
       <RouterLink to="/tree">Family Tree</RouterLink>
       <RouterLink v-if="auth.isAdmin" to="/admin/users">Manage Users</RouterLink>
     </div>

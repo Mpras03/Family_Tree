@@ -2,10 +2,12 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { request } from '@/lib/http'
 
+export type Role = 'admin' | 'editor' | 'user'
+
 export interface SessionUser {
   id: string
   username: string
-  role: 'admin' | 'user'
+  role: Role
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -15,6 +17,10 @@ export const useAuthStore = defineStore('auth', () => {
   const error = ref<string | null>(null)
 
   const isAdmin = computed(() => user.value?.role === 'admin')
+  // admin + editor can manage family members and the tree; plain users only see the tree
+  const canManageMembers = computed(
+    () => user.value?.role === 'admin' || user.value?.role === 'editor',
+  )
 
   async function fetchMe() {
     try {
@@ -48,5 +54,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, initialized, loading, error, isAdmin, fetchMe, login, logout }
+  return { user, initialized, loading, error, isAdmin, canManageMembers, fetchMe, login, logout }
 })

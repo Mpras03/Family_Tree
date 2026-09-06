@@ -7,7 +7,7 @@ import type { Env } from '../env'
 
 const app = new Hono<Env>()
 
-app.use('*', requireAuth, requireRole('admin'))
+app.use('*', requireAuth, requireRole('admin', 'editor'))
 
 app.post('/', async (c) => {
   const db = c.get('db')

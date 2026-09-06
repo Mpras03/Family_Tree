@@ -15,6 +15,8 @@ export interface Member {
   bio: string | null
   createdAt: string
   updatedAt: string
+  // parent member ids, included by GET /api/members for the list view
+  parents?: string[]
 }
 
 export interface MemberDetail extends Member {

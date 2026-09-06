@@ -19,26 +19,31 @@ const router = createRouter({
       component: AdminUsersView,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
-    { path: '/members', name: 'members', component: MemberListView, meta: { requiresAuth: true } },
+    {
+      path: '/members',
+      name: 'members',
+      component: MemberListView,
+      meta: { requiresAuth: true, requiresMemberAccess: true },
+    },
     {
       path: '/members/new',
       name: 'member-new',
       component: MemberFormView,
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresMemberAccess: true },
     },
     {
       path: '/members/:id',
       name: 'member-detail',
       component: MemberDetailView,
       props: true,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresMemberAccess: true },
     },
     {
       path: '/members/:id/edit',
       name: 'member-edit',
       component: MemberFormView,
       props: true,
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresMemberAccess: true },
     },
     { path: '/tree', name: 'tree', component: TreeView, meta: { requiresAuth: true } },
   ],
@@ -50,8 +55,13 @@ router.beforeEach(async (to) => {
     await auth.fetchMe()
   }
 
+  const canManageMembers = auth.user?.role === 'admin' || auth.user?.role === 'editor'
+  // where a logged-in user lands by default: admin/editor manage members,
+  // plain users only have the family tree
+  const home = canManageMembers ? '/members' : '/tree'
+
   if (to.meta.public) {
-    if (auth.user) return { path: '/members' }
+    if (auth.user) return { path: home }
     return true
   }
 
@@ -60,7 +70,11 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {
-    return { path: '/members' }
+    return { path: home }
+  }
+
+  if (to.meta.requiresMemberAccess && !canManageMembers) {
+    return { path: '/tree' }
   }
 
   return true

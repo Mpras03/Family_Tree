@@ -33,8 +33,10 @@ app.post('/', async (c) => {
   const body = await c.req.json()
   const { username, password, role } = body
 
-  if (!username || !password || !['admin', 'user'].includes(role)) {
-    throw new HTTPException(400, { message: 'username, password, and role (admin|user) are required' })
+  if (!username || !password || !['admin', 'editor', 'user'].includes(role)) {
+    throw new HTTPException(400, {
+      message: 'username, password, and role (admin|editor|user) are required',
+    })
   }
 
   const [existing] = await db.select().from(users).where(eq(users.username, username))
@@ -63,15 +65,15 @@ app.put('/:id', async (c) => {
   const [existing] = await db.select().from(users).where(eq(users.id, id))
   if (!existing) throw new HTTPException(404, { message: 'User not found' })
 
-  if (body.role && !['admin', 'user'].includes(body.role)) {
-    throw new HTTPException(400, { message: 'role must be admin or user' })
+  if (body.role && !['admin', 'editor', 'user'].includes(body.role)) {
+    throw new HTTPException(400, { message: 'role must be admin, editor, or user' })
   }
 
   const currentUser = c.get('user')!
   if (body.role && body.role !== existing.role && existing.id === currentUser.id) {
     throw new HTTPException(400, { message: 'Cannot change your own role' })
   }
-  if (existing.role === 'admin' && body.role === 'user') {
+  if (existing.role === 'admin' && body.role && body.role !== 'admin') {
     const admins = await adminCount(db)
     if (admins <= 1) throw new HTTPException(400, { message: 'Cannot demote the last remaining admin' })
   }

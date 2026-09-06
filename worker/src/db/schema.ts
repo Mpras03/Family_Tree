@@ -40,7 +40,7 @@ export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
-  role: text('role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  role: text('role', { enum: ['admin', 'editor', 'user'] }).notNull().default('user'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(current_timestamp)`),

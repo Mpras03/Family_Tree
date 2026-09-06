@@ -17,7 +17,8 @@ async function submit() {
   errorMsg.value = null
   try {
     await auth.login(username.value, password.value)
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/members'
+    const home = auth.canManageMembers ? '/members' : '/tree'
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : home
     router.push(redirect)
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Login failed'

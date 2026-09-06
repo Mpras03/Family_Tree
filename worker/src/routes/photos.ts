@@ -7,7 +7,7 @@ const app = new Hono<Env>()
 
 app.use('*', requireAuth)
 
-app.post('/', requireRole('admin'), async (c) => {
+app.post('/', requireRole('admin', 'editor'), async (c) => {
   const form = await c.req.formData()
   const file = form.get('file')
   if (!(file instanceof File)) {

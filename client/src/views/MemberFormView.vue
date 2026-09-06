@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMembersStore, type MemberDetail } from '@/stores/members'
 import MemberPickerModal from '@/components/MemberPickerModal.vue'
@@ -10,7 +10,6 @@ const store = useMembersStore()
 
 const id = computed(() => route.params.id as string | undefined)
 const isEdit = computed(() => !!id.value)
-const backTo = computed(() => (isEdit.value ? `/members/${id.value}` : '/members'))
 
 const form = ref({
   fullName: '',
@@ -23,10 +22,18 @@ const form = ref({
   bio: '',
 })
 const photoFile = ref<File | null>(null)
+const photoObjectUrl = ref<string | null>(null)
 const saving = ref(false)
 const errorMsg = ref<string | null>(null)
 
 type RelType = 'parent' | 'child' | 'spouse'
+const relTypeLabels: Record<RelType, string> = {
+  parent: 'Parent of...',
+  child: 'Child of...',
+  spouse: 'Spouse of...',
+}
+
+// add mode: relationships queued and created once the member exists
 interface RelDraft {
   type: RelType
   relatedId: string
@@ -35,46 +42,47 @@ const relDrafts = ref<RelDraft[]>([])
 const relErrors = ref<string[]>([])
 const createdId = ref<string | null>(null)
 
-const relTypeLabels: Record<RelType, string> = {
-  parent: 'Parent of...',
-  child: 'Child of...',
-  spouse: 'Spouse of...',
-}
+// edit mode: relationships managed live against the API
+const currentMember = ref<MemberDetail | null>(null)
+const newRelType = ref<RelType>('parent')
+const newRelId = ref('')
+const relBusy = ref(false)
+const relError = ref<string | null>(null)
 
-const detailed = ref<MemberDetail[]>([])
-const pickerIndex = ref<number | null>(null)
+const pickerIndex = ref<number | 'new' | null>(null)
 
 function nameOf(memberId: string) {
   return store.members.find((m) => m.id === memberId)?.fullName ?? memberId
 }
 
 const memberOptions = computed(() =>
-  detailed.value
+  [...store.members]
     .filter((m) => m.id !== id.value)
     .map((m) => ({
       id: m.id,
       fullName: m.fullName,
-      parents: m.parents.map(nameOf).join(', ') || '—',
-    })),
+      parents: (m.parents ?? []).map(nameOf).join(', ') || '—',
+      gender: m.gender,
+    }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName)),
 )
 
 function selectedName(relatedId: string) {
   return memberOptions.value.find((o) => o.id === relatedId)?.fullName ?? ''
 }
 
+const photoPreviewUrl = computed(() => {
+  if (photoObjectUrl.value) return photoObjectUrl.value
+  if (currentMember.value?.photoKey) return `/api/photos/${currentMember.value.photoKey}`
+  return null
+})
+
 onMounted(async () => {
   if (store.members.length === 0) await store.fetchMembers()
 
-  if (!isEdit.value) {
-    try {
-      detailed.value = await Promise.all(store.members.map((m) => store.fetchMember(m.id)))
-    } catch {
-      detailed.value = store.members.map((m) => ({ ...m, parents: [], children: [], spouses: [], relations: [] }))
-    }
-  }
-
   if (id.value) {
     const member = await store.fetchMember(id.value)
+    currentMember.value = member
     form.value = {
       fullName: member.fullName,
       nickname: member.nickname ?? '',
@@ -88,11 +96,22 @@ onMounted(async () => {
   }
 })
 
+onBeforeUnmount(() => {
+  if (photoObjectUrl.value) URL.revokeObjectURL(photoObjectUrl.value)
+})
+
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement
-  photoFile.value = target.files?.[0] ?? null
+  const file = target.files?.[0] ?? null
+  photoFile.value = file
+  if (photoObjectUrl.value) {
+    URL.revokeObjectURL(photoObjectUrl.value)
+    photoObjectUrl.value = null
+  }
+  if (file) photoObjectUrl.value = URL.createObjectURL(file)
 }
 
+// --- add-mode relationship drafts -------------------------------------------
 function addRelDraft() {
   relDrafts.value.push({ type: 'parent', relatedId: '' })
 }
@@ -101,8 +120,8 @@ function removeRelDraft(index: number) {
   relDrafts.value.splice(index, 1)
 }
 
-function openPicker(index: number) {
-  pickerIndex.value = index
+function openPicker(target: number | 'new') {
+  pickerIndex.value = target
 }
 
 function closePicker() {
@@ -110,8 +129,12 @@ function closePicker() {
 }
 
 function pickMember(memberId: string) {
-  const draft = pickerIndex.value !== null ? relDrafts.value[pickerIndex.value] : undefined
-  if (draft) draft.relatedId = memberId
+  if (pickerIndex.value === 'new') {
+    newRelId.value = memberId
+  } else if (pickerIndex.value !== null) {
+    const draft = relDrafts.value[pickerIndex.value]
+    if (draft) draft.relatedId = memberId
+  }
   closePicker()
 }
 
@@ -129,6 +152,64 @@ async function createRelationships(memberId: string) {
       const name = nameOf(draft.relatedId)
       relErrors.value.push(`${relTypeLabels[draft.type]} ${name}: ${e instanceof Error ? e.message : 'failed'}`)
     }
+  }
+}
+
+// --- edit-mode live relationships ------------------------------------------
+async function reloadRelations() {
+  if (!id.value) return
+  currentMember.value = await store.fetchMember(id.value)
+  await store.fetchMembers()
+}
+
+function relIdFor(kind: RelType, otherId: string): string | undefined {
+  const rels = currentMember.value?.relations ?? []
+  if (kind === 'parent') {
+    return rels.find((r) => r.type === 'parent' && r.memberId === otherId && r.relatedMemberId === id.value)?.id
+  }
+  if (kind === 'child') {
+    return rels.find((r) => r.type === 'parent' && r.memberId === id.value && r.relatedMemberId === otherId)?.id
+  }
+  return rels.find(
+    (r) =>
+      r.type === 'spouse' &&
+      ((r.memberId === id.value && r.relatedMemberId === otherId) ||
+        (r.memberId === otherId && r.relatedMemberId === id.value)),
+  )?.id
+}
+
+async function removeRel(kind: RelType, otherId: string) {
+  const relId = relIdFor(kind, otherId)
+  if (!relId) return
+  if (!confirm(`Remove relationship with ${nameOf(otherId)}?`)) return
+  relError.value = null
+  relBusy.value = true
+  try {
+    await store.removeRelationship(relId)
+    await reloadRelations()
+  } catch (e) {
+    relError.value = e instanceof Error ? e.message : 'Failed to remove relationship'
+  } finally {
+    relBusy.value = false
+  }
+}
+
+async function addRel() {
+  if (!newRelId.value || !id.value) return
+  relError.value = null
+  relBusy.value = true
+  try {
+    if (newRelType.value === 'child') {
+      await store.addRelationship({ memberId: newRelId.value, relatedMemberId: id.value, type: 'parent' })
+    } else {
+      await store.addRelationship({ memberId: id.value, relatedMemberId: newRelId.value, type: newRelType.value })
+    }
+    newRelId.value = ''
+    await reloadRelations()
+  } catch (e) {
+    relError.value = e instanceof Error ? e.message : 'Failed to add relationship'
+  } finally {
+    relBusy.value = false
   }
 }
 
@@ -171,7 +252,6 @@ async function submit() {
     <div class="form-layout">
       <div class="card form-card">
         <div class="form-header">
-          <RouterLink v-if="isEdit" :to="backTo" class="btn btn-secondary">&larr; Back</RouterLink>
           <h1>{{ isEdit ? 'Edit Member' : 'Add Member' }}</h1>
         </div>
         <form @submit.prevent="submit">
@@ -217,10 +297,16 @@ async function submit() {
             Bio
             <textarea v-model="form.bio" class="input" rows="4"></textarea>
           </label>
-          <label class="form-field">
+          <div class="form-field">
             Photo
-            <input type="file" accept="image/*" @change="onFileChange" />
-          </label>
+            <div class="photo-field">
+              <div class="photo-preview">
+                <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="Photo preview" />
+                <span v-else class="photo-preview-empty">300 &times; 300</span>
+              </div>
+              <input type="file" accept="image/*" @change="onFileChange" />
+            </div>
+          </div>
 
           <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
           <div v-if="relErrors.length" class="rel-errors">
@@ -239,26 +325,84 @@ async function submit() {
         </form>
       </div>
 
-      <aside v-if="!isEdit" class="card relations-panel">
-        <h2>Family relationships <span class="text-muted">(optional)</span></h2>
-        <p v-if="memberOptions.length === 0" class="text-muted">
-          Add more members first to link relationships.
-        </p>
-        <template v-else>
-          <div v-for="(draft, i) in relDrafts" :key="i" class="rel-row">
-            <select v-model="draft.type" class="input">
+      <aside class="card relations-panel">
+        <h2>Family relationships <span v-if="!isEdit" class="text-muted">(optional)</span></h2>
+
+        <!-- edit mode: live CRUD against the API -->
+        <template v-if="isEdit">
+          <p v-if="relError" class="error-text">{{ relError }}</p>
+
+          <h3>Parents</h3>
+          <ul class="rel-list">
+            <li v-for="p in currentMember?.parents ?? []" :key="p">
+              <span>{{ nameOf(p) }}</span>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="relBusy" @click="removeRel('parent', p)">
+                Remove
+              </button>
+            </li>
+            <li v-if="!currentMember?.parents.length" class="text-muted">—</li>
+          </ul>
+
+          <h3>Children</h3>
+          <ul class="rel-list">
+            <li v-for="c in currentMember?.children ?? []" :key="c">
+              <span>{{ nameOf(c) }}</span>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="relBusy" @click="removeRel('child', c)">
+                Remove
+              </button>
+            </li>
+            <li v-if="!currentMember?.children.length" class="text-muted">—</li>
+          </ul>
+
+          <h3>Spouses</h3>
+          <ul class="rel-list">
+            <li v-for="s in currentMember?.spouses ?? []" :key="s">
+              <span>{{ nameOf(s) }}</span>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="relBusy" @click="removeRel('spouse', s)">
+                Remove
+              </button>
+            </li>
+            <li v-if="!currentMember?.spouses.length" class="text-muted">—</li>
+          </ul>
+
+          <h3>Add relationship</h3>
+          <p v-if="memberOptions.length === 0" class="text-muted">Add more members first to link relationships.</p>
+          <div v-else class="rel-row">
+            <select v-model="newRelType" class="input">
               <option value="parent">Parent of...</option>
               <option value="child">Child of...</option>
               <option value="spouse">Spouse of...</option>
             </select>
-            <button type="button" class="input picker-trigger" @click="openPicker(i)">
-              <span :class="{ 'text-muted': !draft.relatedId }">
-                {{ draft.relatedId ? selectedName(draft.relatedId) : 'Select member' }}
+            <button type="button" class="input picker-trigger" @click="openPicker('new')">
+              <span :class="{ 'text-muted': !newRelId }">
+                {{ newRelId ? selectedName(newRelId) : 'Select member' }}
               </span>
             </button>
-            <button type="button" class="btn btn-secondary" @click="removeRelDraft(i)">Remove</button>
+            <button type="button" class="btn btn-primary" :disabled="!newRelId || relBusy" @click="addRel">Add</button>
           </div>
-          <button type="button" class="btn btn-secondary" @click="addRelDraft">+ Add relationship</button>
+        </template>
+
+        <!-- add mode: queued drafts, created after the member is saved -->
+        <template v-else>
+          <p v-if="memberOptions.length === 0" class="text-muted">
+            Add more members first to link relationships.
+          </p>
+          <template v-else>
+            <div v-for="(draft, i) in relDrafts" :key="i" class="rel-row">
+              <select v-model="draft.type" class="input">
+                <option value="parent">Parent of...</option>
+                <option value="child">Child of...</option>
+                <option value="spouse">Spouse of...</option>
+              </select>
+              <button type="button" class="input picker-trigger" @click="openPicker(i)">
+                <span :class="{ 'text-muted': !draft.relatedId }">
+                  {{ draft.relatedId ? selectedName(draft.relatedId) : 'Select member' }}
+                </span>
+              </button>
+              <button type="button" class="btn btn-secondary" @click="removeRelDraft(i)">Remove</button>
+            </div>
+            <button type="button" class="btn btn-secondary" @click="addRelDraft">+ Add relationship</button>
+          </template>
         </template>
       </aside>
     </div>
@@ -297,6 +441,11 @@ async function submit() {
   font-size: 1rem;
 }
 
+.relations-panel h3 {
+  font-size: 0.9rem;
+  margin: var(--space-3) 0 var(--space-1);
+}
+
 .form-header {
   display: flex;
   align-items: center;
@@ -311,6 +460,57 @@ async function submit() {
 form {
   display: flex;
   flex-direction: column;
+}
+
+.photo-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.photo-preview {
+  width: 300px;
+  height: 300px;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-preview-empty {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.rel-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+
+.rel-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.btn-sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .rel-row {

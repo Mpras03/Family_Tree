@@ -1,10 +1,12 @@
 import type { drizzle } from 'drizzle-orm/d1'
 import type * as schema from './db/schema'
 
+export type Role = 'admin' | 'editor' | 'user'
+
 export type SessionUser = {
   id: string
   username: string
-  role: 'admin' | 'user'
+  role: Role
 }
 
 export type Env = {

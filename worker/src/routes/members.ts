@@ -18,10 +18,20 @@ function normalizeBirthOrder(value: unknown): number | null {
 app.get('/', async (c) => {
   const db = c.get('db')
   const rows = await db.select().from(members)
-  return c.json(rows)
+
+  // attach parent ids so the list view can show / search by parent name
+  const parentRels = await db.select().from(relationships).where(eq(relationships.type, 'parent'))
+  const parentsByChild = new Map<string, string[]>()
+  for (const r of parentRels) {
+    const list = parentsByChild.get(r.relatedMemberId) ?? []
+    list.push(r.memberId)
+    parentsByChild.set(r.relatedMemberId, list)
+  }
+
+  return c.json(rows.map((m) => ({ ...m, parents: parentsByChild.get(m.id) ?? [] })))
 })
 
-app.post('/', requireRole('admin'), async (c) => {
+app.post('/', requireRole('admin', 'editor'), async (c) => {
   const db = c.get('db')
   const body = await c.req.json()
   if (!body.fullName || !body.gender) {
@@ -70,7 +80,7 @@ app.get('/:id', async (c) => {
   return c.json({ ...member, parents, children, spouses, relations: rels })
 })
 
-app.put('/:id', requireRole('admin'), async (c) => {
+app.put('/:id', requireRole('admin', 'editor'), async (c) => {
   const db = c.get('db')
   const id = c.req.param('id')
   const body = await c.req.json()
@@ -99,7 +109,7 @@ app.put('/:id', requireRole('admin'), async (c) => {
   return c.json(updated)
 })
 
-app.delete('/:id', requireRole('admin'), async (c) => {
+app.delete('/:id', requireRole('admin', 'editor'), async (c) => {
   const db = c.get('db')
   const id = c.req.param('id')
 
