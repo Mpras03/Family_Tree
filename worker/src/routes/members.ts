@@ -9,6 +9,12 @@ const app = new Hono<Env>()
 
 app.use('*', requireAuth)
 
+// birthOrder comes from the client as a number, "" or null; keep it a positive int or null
+function normalizeBirthOrder(value: unknown): number | null {
+  const n = typeof value === 'string' ? Number(value) : value
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null
+}
+
 app.get('/', async (c) => {
   const db = c.get('db')
   const rows = await db.select().from(members)
@@ -32,6 +38,7 @@ app.post('/', requireRole('admin'), async (c) => {
     birthDate: body.birthDate ?? null,
     deathDate: body.deathDate ?? null,
     gender: body.gender,
+    birthOrder: normalizeBirthOrder(body.birthOrder),
     photoKey: body.photoKey ?? null,
     bio: body.bio ?? null,
     createdAt: now,
@@ -80,6 +87,8 @@ app.put('/:id', requireRole('admin'), async (c) => {
       birthDate: body.birthDate ?? existing.birthDate,
       deathDate: body.deathDate ?? existing.deathDate,
       gender: body.gender ?? existing.gender,
+      birthOrder:
+        body.birthOrder === undefined ? existing.birthOrder : normalizeBirthOrder(body.birthOrder),
       photoKey: body.photoKey ?? existing.photoKey,
       bio: body.bio ?? existing.bio,
       updatedAt: new Date().toISOString(),

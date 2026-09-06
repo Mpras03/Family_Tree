@@ -87,6 +87,7 @@ async function addRelationship() {
       </div>
 
       <p>Gender: {{ member.gender }}</p>
+      <p v-if="member.birthOrder">Anak ke-{{ member.birthOrder }}</p>
       <p v-if="member.birthDate">Born: {{ member.birthDate }}</p>
       <p v-if="member.deathDate">Died: {{ member.deathDate }}</p>
       <p v-if="member.bio">{{ member.bio }}</p>

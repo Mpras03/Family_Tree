@@ -10,6 +10,7 @@ export interface Member {
   birthDate: string | null
   deathDate: string | null
   gender: 'male' | 'female'
+  birthOrder: number | null
   photoKey: string | null
   bio: string | null
   createdAt: string

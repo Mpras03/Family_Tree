@@ -10,20 +10,26 @@ const loading = ref(true)
 const busy = ref(false)
 const errorMsg = ref<string | null>(null)
 const hasMembers = ref(true)
-const rootId = ref('')
+
+// --- visualization state (kept fully separate from the relationship data) ---
+const activeRootId = ref('')
+const rootCollapsed = ref(false)
 
 type Datum = {
   id: string
-  data: { gender: 'M' | 'F'; fullName: string; nickname: string; photoUrl: string }
+  data: {
+    gender: 'M' | 'F'
+    fullName: string
+    nickname: string
+    photoUrl: string
+    birthOrder: number
+  }
   rels: { parents: string[]; children: string[]; spouses: string[] }
 }
 
 let chart: ReturnType<typeof f3.createChart> | null = null
+// --- relationship data (persistent, never mutated by expand/collapse) ---
 let allData: Datum[] = []
-// ids whose relatives (further from the root person) are folded into their card
-const collapsed = new Set<string>()
-// for each visible person: the neighbour one step closer to the root person
-let parentOf = new Map<string, string>()
 
 const rootOptions = computed(() =>
   [...store.members]
@@ -39,6 +45,7 @@ function toChartDatum(m: MemberDetail): Datum {
       fullName: m.fullName,
       nickname: m.nickname ?? '',
       photoUrl: m.photoKey ? `/api/photos/${m.photoKey}` : '',
+      birthOrder: m.birthOrder ?? 999,
     },
     rels: {
       parents: [...m.parents],
@@ -48,8 +55,8 @@ function toChartDatum(m: MemberDetail): Datum {
   }
 }
 
-// if someone has a single recorded parent whose spouse isn't already a parent,
-// treat that spouse as the co-parent so couples show together in the tree
+// single recorded parent -> treat that parent's spouse as the co-parent so
+// couples render together
 function inferCoParents(data: Datum[]) {
   const byId = new Map(data.map((d) => [d.id, d]))
   for (const d of data) {
@@ -64,11 +71,11 @@ function inferCoParents(data: Datum[]) {
   }
 }
 
-function neighbours(d: Datum) {
-  return [...d.rels.parents, ...d.rels.children, ...d.rels.spouses]
+function known(id: string) {
+  return allData.some((d) => d.id === id)
 }
 
-// person from whom the widest slice of the family is reachable in one view
+// default focus: the person from whom the widest slice of the family is reachable
 function pickDefaultRoot(): string {
   const byId = new Map(allData.map((d) => [d.id, d]))
   const roots = allData.filter((d) => d.rels.parents.length === 0)
@@ -96,123 +103,68 @@ function pickDefaultRoot(): string {
   return best
 }
 
-function computeVisible(): Datum[] {
-  const byId = new Map(allData.map((d) => [d.id, d]))
-  const main = rootId.value
-  // breadth-first walk from the root person -> records how each node connects back
-  const reached = new Set<string>([main])
-  parentOf = new Map()
-  const queue = [main]
-  while (queue.length) {
-    const id = queue.shift() as string
-    const d = byId.get(id)
-    if (!d) continue
-    for (const n of neighbours(d)) {
-      if (byId.has(n) && !reached.has(n)) {
-        reached.add(n)
-        parentOf.set(n, id)
-        queue.push(n)
-      }
+function rootHasDescendants(): boolean {
+  const root = allData.find((d) => d.id === activeRootId.value)
+  return !!root && root.rels.children.length > 0
+}
+
+// snapshot for family-chart. when the root is collapsed its whole downstream
+// (children, grandchildren, ...) is dropped from the snapshot only - the
+// underlying relationship data is untouched.
+function chartData(): Datum[] {
+  const data: Datum[] = allData.map((d) => ({
+    id: d.id,
+    data: d.data,
+    rels: {
+      parents: [...d.rels.parents],
+      children: [...d.rels.children],
+      spouses: [...d.rels.spouses],
+    },
+  }))
+
+  if (rootCollapsed.value) {
+    const byId = new Map(data.map((d) => [d.id, d]))
+    const root = byId.get(activeRootId.value)
+    const drop = new Set<string>()
+    const q = [...(root?.rels.children ?? [])]
+    while (q.length) {
+      const id = q.shift() as string
+      if (drop.has(id) || !byId.has(id)) continue
+      drop.add(id)
+      q.push(...byId.get(id)!.rels.children)
     }
-  }
-  // hide a node when its path back to the root person crosses a collapsed person
-  const shown = new Set(
-    [...reached].filter((id) => {
-      let cur = id
-      while (parentOf.has(cur)) {
-        cur = parentOf.get(cur) as string
-        if (collapsed.has(cur)) return false
-      }
-      return true
-    }),
-  )
-  return allData
-    .filter((d) => shown.has(d.id))
-    .map((d) => ({
-      id: d.id,
-      data: d.data,
-      rels: {
-        parents: d.rels.parents.filter((x) => shown.has(x)),
-        children: d.rels.children.filter((x) => shown.has(x)),
-        spouses: d.rels.spouses.filter((x) => shown.has(x)),
-      },
-    }))
-}
-
-// does this person have anyone hanging off them (further from the root)?
-function hasFoldable(id: string): boolean {
-  for (const start of parentOf.keys()) {
-    let cur = start
-    while (parentOf.has(cur)) {
-      cur = parentOf.get(cur) as string
-      if (cur === id) return true
+    const kept = data.filter((d) => !drop.has(d.id))
+    for (const d of kept) {
+      d.rels.parents = d.rels.parents.filter((x) => !drop.has(x))
+      d.rels.children = d.rels.children.filter((x) => !drop.has(x))
+      d.rels.spouses = d.rels.spouses.filter((x) => !drop.has(x))
     }
+    return kept
   }
-  return false
+  return data
 }
 
-// ids family-chart actually drew on screen for the current root
-function renderedIds(): Set<string> {
-  try {
-    const tree = (chart as unknown as { store: { getTree: () => { data: { data: { id: string } }[] } } })
-      .store.getTree()
-    return new Set(tree.data.map((n) => n.data.id))
-  } catch {
-    return new Set()
-  }
-}
-
-// does this person have real relatives that aren't visible from the current root?
-function hasUnseenFamily(id: string): boolean {
-  const known = new Set(allData.map((d) => d.id))
-  const rendered = renderedIds()
-  const d = allData.find((x) => x.id === id)
-  if (!d) return false
-  return neighbours(d).some((n) => known.has(n) && !rendered.has(n))
-}
-
-function push(position: 'inherit' | 'fit') {
+function render(position: 'inherit' | 'fit') {
   if (!chart) return
-  chart.updateData(computeVisible() as never)
-  chart.updateMainId(rootId.value as never)
+  chart.updateData(chartData() as never)
+  chart.updateMainId(activeRootId.value as never)
   chart.updateTree({ tree_position: position })
 }
 
-function onCardClick(id: string) {
-  // 1. already folded -> unfold it
-  if (collapsed.has(id)) {
-    collapsed.delete(id)
-    push('inherit')
+// --- the one interaction rule -------------------------------------------------
+// clicking a non-root person makes them the root; clicking the current root
+// toggles its descendants between collapsed and expanded.
+function handlePersonClick(id: string) {
+  if (id !== activeRootId.value) {
+    if (!known(id)) return
+    activeRootId.value = id
+    rootCollapsed.value = false
+    render('fit')
     return
   }
-  // 2. this person has family that isn't visible from here -> re-root onto them
-  if (id !== rootId.value && hasUnseenFamily(id)) {
-    rootId.value = id
-    collapsed.clear()
-    push('fit')
-    return
-  }
-  // 3. their relatives are all shown -> fold them into this card
-  if (hasFoldable(id)) {
-    collapsed.add(id)
-    push('inherit')
-  }
-}
-
-function changeRoot() {
-  collapsed.clear()
-  push('fit')
-}
-
-function collapseAll() {
-  allData.forEach((d) => collapsed.add(d.id))
-  collapsed.delete(rootId.value)
-  push('inherit')
-}
-
-function expandAll() {
-  collapsed.clear()
-  push('fit')
+  if (!rootHasDescendants()) return
+  rootCollapsed.value = !rootCollapsed.value
+  render('inherit')
 }
 
 async function loadData() {
@@ -222,7 +174,7 @@ async function loadData() {
   const details = await Promise.all(store.members.map((m) => store.fetchMember(m.id)))
   allData = details.map(toChartDatum)
   inferCoParents(allData)
-  if (!allData.some((d) => d.id === rootId.value)) rootId.value = pickDefaultRoot()
+  if (!known(activeRootId.value)) activeRootId.value = pickDefaultRoot()
 }
 
 async function refresh() {
@@ -231,7 +183,7 @@ async function refresh() {
   errorMsg.value = null
   try {
     await loadData()
-    if (hasMembers.value) push('fit')
+    if (hasMembers.value) render('fit')
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to refresh'
   } finally {
@@ -244,11 +196,14 @@ onMounted(async () => {
     await loadData()
     if (!hasMembers.value || !container.value) return
 
-    chart = f3.createChart(container.value, computeVisible() as never)
+    chart = f3.createChart(container.value, chartData() as never)
     chart.setCardYSpacing(250)
     chart.setCardXSpacing(240)
     chart.setShowSiblingsOfMain(true)
     chart.setSingleParentEmptyCard(false)
+    // keep siblings in a fixed left-to-right order (anak ke-1, ke-2, ...)
+    chart.setSortChildrenFunction(((a: { data: Datum['data'] }, b: { data: Datum['data'] }) =>
+      (a.data.birthOrder ?? 999) - (b.data.birthOrder ?? 999)) as never)
 
     const card = chart.setCardHtml()
     card.setStyle('imageCircle')
@@ -257,16 +212,16 @@ onMounted(async () => {
     card.setCardImageField('photoUrl')
     card.setMiniTree(false)
 
-    // click a person = fold / unfold their relatives. no re-centering.
-    card.setOnCardClick((_e: MouseEvent, d: { data: { id: string } }) => onCardClick(d.data.id))
-
-    // "+" hint on cards that currently have relatives folded in
+    card.setOnCardClick((_e: MouseEvent, d: { data: { id: string } }) => handlePersonClick(d.data.id))
     card.setOnCardUpdate(function (this: HTMLElement, d: { data: { id: string } }) {
       const el = this.querySelector('.card') as HTMLElement | null
-      if (el) el.classList.toggle('has-folded', collapsed.has(d.data.id))
+      if (el) {
+        el.classList.toggle('is-root', d.data.id === activeRootId.value)
+        el.classList.toggle('has-folded', rootCollapsed.value && d.data.id === activeRootId.value)
+      }
     })
 
-    chart.updateMainId(rootId.value as never)
+    chart.updateMainId(activeRootId.value as never)
     chart.updateTree({ initial: true })
     loading.value = false
     await nextTick()
@@ -287,29 +242,33 @@ onMounted(async () => {
         <h1>Family Tree</h1>
         <span class="tree-title-star">&#10022;</span>
       </div>
-      <div v-if="hasMembers && !loading && !errorMsg" class="tree-actions">
-        <button class="btn btn-secondary" :disabled="busy" @click="refresh">
-          {{ busy ? 'Memuat...' : 'Refresh data' }}
-        </button>
-        <button class="btn btn-secondary" @click="collapseAll">Ringkas semua</button>
-        <button class="btn btn-secondary" @click="expandAll">Bentangkan semua</button>
-      </div>
+      <button
+        v-if="hasMembers && !loading && !errorMsg"
+        class="btn btn-secondary"
+        :disabled="busy"
+        @click="refresh"
+      >
+        {{ busy ? 'Memuat...' : 'Refresh data' }}
+      </button>
     </div>
 
     <div v-if="hasMembers && !loading && !errorMsg" class="tree-controls">
       <label class="root-picker">
-        Lihat pohon dari
-        <select v-model="rootId" class="input" @change="changeRoot">
+        Fokus ke
+        <select
+          class="input"
+          :value="activeRootId"
+          @change="handlePersonClick(($event.target as HTMLSelectElement).value)"
+        >
           <option v-for="o in rootOptions" :key="o.id" :value="o.id">{{ o.label }}</option>
         </select>
       </label>
     </div>
 
     <p class="text-muted hint">
-      Pohon digambar dari sudut pandang satu orang. Klik anggota yang keluarganya belum kelihatan
-      (mis. pasangan yang orang tuanya belum muncul) &mdash; pohon otomatis pindah ke sudut pandang
-      orang itu. Klik anggota yang kerabatnya sudah lengkap untuk melipat / membentangkan; klik lagi
-      untuk mengembalikan. Bisa juga ganti sudut pandang lewat dropdown di atas.
+      Klik anggota mana pun untuk menjadikannya pusat pohon &mdash; orang tua, saudara, pasangan, dan
+      keturunannya ikut tampil. Klik pusat pohon sekali lagi untuk melipat keturunannya; klik lagi
+      untuk membentangkan.
     </p>
 
     <p v-if="loading" class="text-muted">Loading tree...</p>
@@ -354,13 +313,11 @@ onMounted(async () => {
   font-size: 1.1rem;
 }
 
-.tree-actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
 .tree-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   margin-bottom: var(--space-3);
 }
 

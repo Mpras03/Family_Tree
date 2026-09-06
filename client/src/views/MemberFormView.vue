@@ -19,6 +19,7 @@ const form = ref({
   birthDate: '',
   deathDate: '',
   gender: 'male' as 'male' | 'female',
+  birthOrder: '' as number | '',
   bio: '',
 })
 const photoFile = ref<File | null>(null)
@@ -81,6 +82,7 @@ onMounted(async () => {
       birthDate: member.birthDate ?? '',
       deathDate: member.deathDate ?? '',
       gender: member.gender,
+      birthOrder: member.birthOrder ?? '',
       bio: member.bio ?? '',
     }
   }
@@ -134,7 +136,10 @@ async function submit() {
   saving.value = true
   errorMsg.value = null
   try {
-    const payload: Record<string, unknown> = { ...form.value }
+    const payload: Record<string, unknown> = {
+      ...form.value,
+      birthOrder: form.value.birthOrder === '' ? null : Number(form.value.birthOrder),
+    }
 
     if (photoFile.value) {
       const uploaded = await store.uploadPhoto(photoFile.value)
@@ -196,6 +201,17 @@ async function submit() {
           <label class="form-field">
             Death date
             <input v-model="form.deathDate" type="date" class="input" />
+          </label>
+          <label class="form-field">
+            Anak ke- (urutan lahir)
+            <input
+              v-model="form.birthOrder"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              placeholder="mis. 1, 2, 3 — untuk urutan antar saudara di pohon"
+            />
           </label>
           <label class="form-field">
             Bio

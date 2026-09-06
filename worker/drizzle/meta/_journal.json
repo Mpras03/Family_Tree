@@ -15,6 +15,13 @@
       "when": 1786890863813,
       "tag": "0001_clammy_proemial_gods",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788692009872,
+      "tag": "0002_natural_korvac",
+      "breakpoints": true
     }
   ]
 }

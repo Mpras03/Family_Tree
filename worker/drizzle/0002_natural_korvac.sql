@@ -1,0 +1,1 @@
+ALTER TABLE `members` ADD `birth_order` integer;

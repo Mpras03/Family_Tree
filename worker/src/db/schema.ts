@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const members = sqliteTable('members', {
   id: text('id').primaryKey(),
@@ -9,6 +9,9 @@ export const members = sqliteTable('members', {
   birthDate: text('birth_date'),
   deathDate: text('death_date'),
   gender: text('gender', { enum: ['male', 'female'] }).notNull(),
+  // urutan lahir di antara saudara kandung (anak ke-1, ke-2, ...); dipakai
+  // untuk menjaga posisi antar saudara di pohon agar tidak berpindah-pindah
+  birthOrder: integer('birth_order'),
   photoKey: text('photo_key'),
   bio: text('bio'),
   createdAt: text('created_at')
