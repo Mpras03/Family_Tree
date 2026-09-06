@@ -5,6 +5,8 @@ import type { Env } from '../env'
 
 const app = new Hono<Env>()
 
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024 // 2 MB
+
 app.use('*', requireAuth)
 
 app.post('/', requireRole('admin', 'editor'), async (c) => {
@@ -12,6 +14,9 @@ app.post('/', requireRole('admin', 'editor'), async (c) => {
   const file = form.get('file')
   if (!(file instanceof File)) {
     throw new HTTPException(400, { message: 'file is required (multipart/form-data)' })
+  }
+  if (file.size > MAX_PHOTO_BYTES) {
+    throw new HTTPException(413, { message: 'Ukuran foto maksimal 2 MB' })
   }
 
   const ext = file.name.includes('.') ? file.name.split('.').pop() : undefined

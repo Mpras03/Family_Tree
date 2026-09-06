@@ -100,9 +100,25 @@ onBeforeUnmount(() => {
   if (photoObjectUrl.value) URL.revokeObjectURL(photoObjectUrl.value)
 })
 
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024 // 2 MB
+const photoError = ref<string | null>(null)
+
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0] ?? null
+  photoError.value = null
+
+  if (file && file.size > MAX_PHOTO_BYTES) {
+    photoError.value = `Ukuran foto maksimal 2 MB (file ini ${(file.size / 1024 / 1024).toFixed(1)} MB).`
+    target.value = ''
+    photoFile.value = null
+    if (photoObjectUrl.value) {
+      URL.revokeObjectURL(photoObjectUrl.value)
+      photoObjectUrl.value = null
+    }
+    return
+  }
+
   photoFile.value = file
   if (photoObjectUrl.value) {
     URL.revokeObjectURL(photoObjectUrl.value)
@@ -214,6 +230,10 @@ async function addRel() {
 }
 
 async function submit() {
+  if (photoError.value) {
+    errorMsg.value = photoError.value
+    return
+  }
   saving.value = true
   errorMsg.value = null
   try {
@@ -222,6 +242,9 @@ async function submit() {
       birthOrder: form.value.birthOrder === '' ? null : Number(form.value.birthOrder),
     }
 
+    if (photoFile.value && photoFile.value.size > MAX_PHOTO_BYTES) {
+      throw new Error('Ukuran foto maksimal 2 MB.')
+    }
     if (photoFile.value) {
       const uploaded = await store.uploadPhoto(photoFile.value)
       payload.photoKey = uploaded.key
@@ -305,6 +328,8 @@ async function submit() {
                 <span v-else class="photo-preview-empty">300 &times; 300</span>
               </div>
               <input type="file" accept="image/*" @change="onFileChange" />
+              <small class="text-muted">Format gambar, ukuran maksimal 2 MB.</small>
+              <p v-if="photoError" class="error-text">{{ photoError }}</p>
             </div>
           </div>
 
